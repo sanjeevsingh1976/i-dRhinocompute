@@ -3,11 +3,11 @@
     <head>
         <meta charset="utf-8">
         <link rel="icon" href="data:,">
-        <title>BranchNodeRnd.gh and rnd_node.gh</title>
+        <title>SampleGHConvertTo3dm.gh</title>
         <style>
             body {
                 margin: 0;
-                font-family: monospace;
+                font-family: Arial, Helvetica, sans-serif;
             }
             canvas { width: 100%; height: 100%; }
             input[type=range] { width: 100%; }
@@ -37,52 +37,23 @@
         <div id="loader"></div> 
         <div id="container">
             <div id="overlay">
-<!-- /////////////////////////////////////////////////////////////////////////// -->
-                
-                <!-- drop-down menu for grasshopper files -->
-                <div>
-                  <h2>Multiple files!</h2>
-                  <label for="files">Choose a file:</label>
-                  <select name="files" id="files">
-                    <option value="BranchNodeRnd.gh">BranchNodeRnd.gh</option>
-                    <option value="rnd_node.gh">rnd_node.gh</option>
-                  </select>
-                </div>
-
-                <!-- create empty "inputs" div that we can populate with inputs when
-                     onDropdownChanged() is called -->
-                <div id="inputs">
-                  <!-- <div>
-                    <label for="boxSize">boxSize</label>
-                    <input type="range" id="boxSize" min="0.5" max="10" value="10" step="1">
-                  </div>
-                  <div>
-                    <label for="count">count</label>
-                    <input type="range" id="count" min="10" max="100" value="42" step="1">
-                  </div>
-                  <div>
-                    <label for="nodeSize">nodeSize</label>
-                    <input type="range" id="nodeSize" min="3" max="10" value="7" step="1">
-                  </div> -->
-                </div>
-<!-- /////////////////////////////////////////////////////////////////////////// -->
                 <div><button id="downloadButton" disabled>Download</button></div>
-                <div><a href="BranchNodeRnd.gh" download="BranchNodeRnd.gh.html">Save source code</a></div>
+                <div><a href="SampleGHConvertTo3dm.gh" download="SampleGHConvertTo3dm.gh.html">Save source code</a></div>
             </div>
         </div>
-
         <!-- Import maps polyfill -->
         <!-- Remove this when import maps will be widely supported -->
         <script async src="https://unpkg.com/es-module-shims@1.8.0/dist/es-module-shims.js"></script>
 
         <script type="importmap">
             {
-              "imports": {
-                "three": "https://unpkg.com/three@0.156.1/build/three.module.js",
-                "three/examples/jsm/controls/OrbitControls": "https://unpkg.com/three@0.156.1/examples/jsm/controls/OrbitControls.js",
-                "three/examples/jsm/loaders/3DMLoader": "https://unpkg.com/three@0.156.1/examples/jsm/loaders/3DMLoader.js",
-                "rhino3dm":"https://unpkg.com/rhino3dm@8.0.0-beta2/rhino3dm.module.js"
-              }
+                "imports": {
+                    "three": "https://unpkg.com/three@0.158.0/build/three.module.js",
+                    "three/examples/jsm/controls/OrbitControls": "https://unpkg.com/three@0.158.0/examples/jsm/controls/OrbitControls.js",
+                    "three/examples/jsm/loaders/3DMLoader": "https://unpkg.com/three@0.158.0/examples/jsm/loaders/3DMLoader.js",
+                    "rhino3dm":"https://unpkg.com/rhino3dm@8.0.0-beta3/rhino3dm.module.js",
+                    "rhino_compute": "https://unpkg.com/compute-rhino3d@0.13.0-beta/compute.rhino3d.module.js"
+                }
             }
         </script>
 
@@ -91,34 +62,26 @@ import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls'
 import { Rhino3dmLoader } from 'three/examples/jsm/loaders/3DMLoader'
 import rhino3dm from 'rhino3dm'
+import { RhinoCompute } from 'rhino_compute'
 
 // set up loader for converting the results to threejs
 const loader = new Rhino3dmLoader()
-loader.setLibraryPath( 'https://unpkg.com/rhino3dm@8.0.0-beta/' )
+loader.setLibraryPath( 'https://unpkg.com/rhino3dm@8.0.0-beta3/' )
 
 // initialise 'data' object that will be used by compute()
 const data = {
-  definition: 'BranchNodeRnd.gh',
+  definition: 'SampleGHConvertTo3dm.gh',
   inputs: getInputs()
 }
 
-///////////////////////////////////////////////////////////////////////////
-const dropdown = document.getElementById("files")
-dropdown.onchange = onDropdownChange
-///////////////////////////////////////////////////////////////////////////
-
 // globals
-let doc
-let scene, camera, renderer, controls
+let doc, scene, camera, renderer, controls
 
 const rhino = await rhino3dm()
 console.log('Loaded rhino3dm.')
 
 init()
-///////////////////////////////////////////////////////////////////////////
-    // compute()
-    onDropdownChange() // manually trigger ui update (calls compute())
-///////////////////////////////////////////////////////////////////////////
+compute()
 
 const downloadButton = document.getElementById("downloadButton")
 downloadButton.onclick = download
@@ -131,65 +94,28 @@ downloadButton.onclick = download
  * Gets <input> elements from html and sets handlers
  * (html is generated from the grasshopper definition)
  */
- function getInputs() {
-  return Array.from(document.getElementsByTagName('input')).reduce((inputs, input) => {
+function getInputs() {
+  const inputs = {}
+  for (const input of document.getElementsByTagName('input')) {
     switch (input.type) {
       case 'number':
+        inputs[input.id] = input.valueAsNumber
+        input.onchange = onSliderChange
+        break
       case 'range':
-        inputs[input.id] = input.valueAsNumber;
-        input.addEventListener('change', onSliderChange);
-        if (input.type === 'range') {
-          input.addEventListener('mouseup', onSliderChange);
-          input.addEventListener('touchend', onSliderChange);
-        }
-        break;
+        inputs[input.id] = input.valueAsNumber
+        input.onmouseup = onSliderChange
+        input.ontouchend = onSliderChange
+        break
       case 'checkbox':
-        inputs[input.id] = input.checked;
-        input.addEventListener('click', onSliderChange);
-        break;
+        inputs[input.id] = input.checked
+        input.onclick = onSliderChange
+        break
+      default:
+        break
     }
-    return inputs;
-  }, {});
-}
-
-///////////////////////////////////////////////////////////////////////////
-/**
- * Handle events when drop-down is changed
- */
-function onDropdownChange(event) {
-  data.definition = dropdown.value
-  console.log(dropdown.value)
-  updateInputs()
-}
-
-/**
- * Update "inputs" div in html and trigger re-solve
- */
- async function updateInputs() {
-  const response = await fetch('/' + data.definition);
-  const responseJson = await response.json();
-  
-  const inputsHtml = responseJson.inputs.map(input => {
-    let html = '';
-    switch (input.paramType) {
-      case 'Integer':
-        html = `<input type="number" id="${input.name}" value="${input.default}">`;
-        break;
-      case 'Number':
-        html = (input.minimum !== undefined && input.maximum !== undefined) 
-          ? `<input type="range" id="${input.name}" min="${input.minimum}" max="${input.maximum}" value="${input.default}" step="1">`
-          : `<input type="number" id="${input.name}" value="${input.default}">`;
-        break;
-      case 'Boolean':
-        html = `<input type="checkbox" id="${input.name}" ${input.default ? 'checked' : ''}>`;
-        break;
-    }
-    return html ? `<label for="${input.name}">${input.name}</label>${html}` : '';
-  }).join('\n');
-
-  document.getElementById('inputs').innerHTML = inputsHtml;
-  data.inputs = getInputs();
-  onSliderChange();
+  }
+  return inputs
 }
 
 /**
@@ -237,11 +163,7 @@ function init() {
  */
 async function compute() {
   // construct url for GET /solve/definition.gh?name=value(&...)
-///////////////////////////////////////////////////////////////////////////
-  // update call to compute to use data.definition, instead of hard-coding
-  // the grasshopper file name
   const url = new URL('/solve/' + data.definition, window.location.origin)
-///////////////////////////////////////////////////////////////////////////
   Object.keys(data.inputs).forEach(key => url.searchParams.append(key, data.inputs[key]))
   console.log(url.toString())
   
@@ -254,6 +176,7 @@ async function compute() {
     }
 
     const responseJson = await response.json()
+    console.log(responseJson)
 
     collectResults(responseJson)
 
@@ -285,8 +208,31 @@ function collectResults(responseJson) {
         for( let j = 0; j < branch.length; j ++) {
           // ...load rhino geometry into doc
           const rhinoObject = decodeItem(branch[j])
+          //console.log(rhinoObject.vertexColors().count)
           if (rhinoObject !== null) {
-            doc.objects().add(rhinoObject, null)
+
+            if( rhinoObject.constructor.name === 'File3dm' ) {
+              
+              const _doc = rhinoObject
+
+              //add objects into the main doc
+              for( let p = 0; p < _doc.objects().count; p ++ ) {
+
+                const ro = _doc.objects().get(p)
+                const geo = ro.geometry()
+                const attr = ro.attributes()
+                const matIndex = attr.materialIndex
+                const mat = _doc.materials().get(matIndex)
+                attr.materialIndex = doc.materials().count - 1 
+                doc.materials().add(mat)
+                doc.objects().add(geo, attr)
+
+              }
+              
+            } else {
+              doc.objects().add(rhinoObject, null)
+            }
+            
           }
         }
       }
@@ -302,14 +248,13 @@ function collectResults(responseJson) {
     const buffer = new Uint8Array(doc.toByteArray()).buffer
     loader.parse( buffer, function ( object ) 
     {
-///////////////////////////////////////////////////////////////////////////
-        // change mesh material
+        // debug 
+        /*
         object.traverse(child => {
-          if (child.isMesh) {
-            child.material = new THREE.MeshNormalMaterial({ wireframe: true})
-          }
+          if (child.material !== undefined)
+            child.material = new THREE.MeshNormalMaterial()
         }, false)
-///////////////////////////////////////////////////////////////////////////
+        */
 
         // clear objects from scene. do this here to avoid blink
         scene.traverse(child => {
@@ -317,6 +262,8 @@ function collectResults(responseJson) {
                 scene.remove(child)
             }
         })
+
+        //console.log(object)
 
         // add object graph from rhino model to three.js scene
         scene.add( object )
@@ -327,7 +274,7 @@ function collectResults(responseJson) {
 
         // zoom to extents
         zoomCameraToSelection(camera, controls, scene.children)
-    }, (error)=>{console.error(error)})
+    })
 }
 
 /**
@@ -338,9 +285,25 @@ function decodeItem(item) {
   if (item.type === 'System.String') {
     // hack for draco meshes
     try {
-        return rhino.DracoCompression.decompressBase64String(data)
+
+        const obj = rhino.DracoCompression.decompressBase64String(data)
+
+        if( obj === null ) {
+
+          //might be a whole doc
+
+          const arr = _base64ToArrayBuffer(data)
+          return rhino.File3dm.fromByteArray(arr)
+
+        } else {
+
+          return obj
+
+        }
+        
     } catch {} // ignore errors (maybe the string was just a string...)
   } else if (typeof data === 'object') {
+    //console.log(data)
     return rhino.CommonObject.decode(data)
   }
   return null
@@ -452,6 +415,17 @@ function showSpinner(enable) {
     document.getElementById('loader').style.display = 'block'
   else
     document.getElementById('loader').style.display = 'none'
+}
+
+// from https://stackoverflow.com/a/21797381
+function _base64ToArrayBuffer(base64) {
+  var binary_string = window.atob(base64);
+  var len = binary_string.length;
+  var bytes = new Uint8Array(len);
+  for (var i = 0; i < len; i++) {
+    bytes[i] = binary_string.charCodeAt(i);
+  }
+  return bytes.buffer;
 }
         </script>
     </body>
